@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title>모바일 가게놀이 & 전자칠판</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Courier+New:wght@700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #00897b;   
+            --secondary: #e0f2f1;
+            --accent: #ff6f00;    
+            --bg: #f4f7f6;
+            --text: #333;
+            --white: #ffffff;
+            
+            /* 자릿수 색상 */
+            --unit-1: #fff3cd; --unit-10: #d1e7dd; --unit-100: #cfe2ff;
+            --unit-1000: #e2d9f3; --unit-10000: #f8d7da;
+        }
+
+        body {
+            font-family: 'Jua', 'Malgun Gothic', sans-serif;
+            margin: 0; padding: 0;
+            background: var(--bg); color: var(--text);
+            padding-bottom: 80px; /* 모바일 하단 여백 확보 */
+            -webkit-touch-callout: none; /* iOS 길게 누르기 방지 */
+        }
+
+        header {
+            background: var(--primary); color: white;
+            padding: 15px 20px; text-align: center;
+            font-size: 22px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            position: sticky; top: 0; z-index: 100;
+        }
+
+        main {
+            padding: 10px;
+            max-width: 1400px; margin: 0 auto;
+            display: grid;
+            /* PC에서는 3단, 태블릿 2단, 모바일 1단 */
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 15px;
+        }
+
+        .card {
+            background: var(--white); border-radius: 15px;
+            padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1px solid #eee;
+        }
+
+        h2 {
+            margin-top: 0; border-bottom: 2px solid #eee;
+            padding-bottom: 10px; color: var(--primary); font-size: 18px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        
+        h3 { font-size: 16px; margin: 15px 0 5px 0; color: #555; }
+
+        /* 버튼 스타일 (터치하기 좋게 키움) */
+        button {
+            border: none; border-radius: 8px; padding: 12px 10px;
+            font-family: 'Jua', sans-serif; font-size: 16px; cursor: pointer;
+            transition: 0.2s; white-space: nowrap; 
+            touch-action: manipulation; /* 모바일 터치 반응 속도 개선 */
+        }
+        button:active { transform: scale(0.96); background-color: #ddd; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        button.primary { background: var(--primary); color: white; }
+        button.secondary { background: #eceff1; color: #455a64; }
+        button.danger { background: #ef5350; color: white; }
+        
+        button.mission { 
+            background: linear-gradient(135deg, #ff8a65 0%, #ff7043 100%);
+            color: white; width: 100%; padding: 18px;
+            font-size: 20px; margin-top:15px;
+            box-shadow: 0 4px 0 #d84315;
+        }
+        button.mission:active { box-shadow: none; transform: translateY(4px); }
+
+        /* 입력창 & 카메라 */
+        input[type="text"], input[type="number"] {
+            padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 18px; font-family: 'Jua';
+        }
+        #camera {
+            width: 100%; height: 220px; background: #000;
+            border-radius: 10px; overflow: hidden; margin-bottom: 10px;
+            position: relative;
+        }
+        #camera video { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* 모바일용 캔버스 오버레이 (바코드 가이드) */
+        #camera canvas { display: none; }
+        
+        .row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+        .full-btn { flex: 1; }
+
+        /* 큰 수 읽기 & 합계 */
+        .total-display-area {
+            background: #e0f7fa; padding: 15px; border-radius: 10px;
+            text-align: right; margin-bottom: 10px; border: 2px solid #b2ebf2;
+        }
+        .total-value { font-size: 32px; font-weight: bold; color: #006064; }
+        
+        .digit-helper-container {
+            display: flex; justify-content: flex-end; gap: 2px;
+            margin-top: 5px; height: 0; overflow: hidden; transition: height 0.3s;
+        }
+        .digit-helper-container.show { height: 45px; }
+        
+        .digit-box-unit {
+            display: flex; flex-direction: column; align-items: center; width: 26px;
+        }
+        .digit-num { font-size: 18px; font-weight: bold; }
+        .digit-unit { font-size: 10px; padding: 2px 4px; border-radius: 3px; color: #444; margin-top: 2px; }
+        .u-1 { background: var(--unit-1); } .u-10 { background: var(--unit-10); }
+        .u-100 { background: var(--unit-100); } .u-1000 { background: var(--unit-1000); }
+        .u-10000 { background: var(--unit-10000); }
+
+        /* 거스름돈 계산 박스 */
+        .payment-box {
+            background: #e3f2fd; padding: 15px; border-radius: 10px;
+            margin-bottom: 15px; border: 1px solid #90caf9;
+        }
+        .result-text { font-size: 18px; font-weight: bold; color: #d32f2f; margin-left: 5px; }
+
+        /* 테이블 */
+        table { width: 100%; border-collapse: collapse; font-size: 16px; }
+        th { background: #f5f5f5; padding: 10px; text-align: center; color: #666; }
+        td { border-bottom: 1px solid #eee; padding: 10px 5px; }
+        .td-right { text-align: right; }
+        .td-center { text-align: center; }
+
+        /* 미션 박스 */
+        .mission-box {
+            background: #fff3e0; border: 3px dashed #ffb74d; padding: 15px;
+            margin-top: 15px; border-radius: 12px; display: none;
+            text-align: center; animation: popIn 0.3s;
+        }
+        @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* 계산기 스타일 */
+        .calc-display {
+            width: 100%; font-size: 32px; text-align: right; padding: 15px;
+            margin-bottom: 15px; border: 2px solid #cfd8dc; border-radius: 10px;
+            box-sizing: border-box; background: #fff; font-family: 'Courier New', monospace; font-weight: bold;
+        }
+        .calc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        .calc-grid button { 
+            padding: 20px 0; font-size: 24px; background: #fff; 
+            border: 1px solid #ddd; box-shadow: 0 2px 0 #ccc;
+        }
+        .btn-op { background: #e1f5fe !important; color: #0277bd !important; }
+        .btn-c { background: #ffebee !important; color: #c62828 !important; }
+        .btn-eq { background: #e8f5e9 !important; color: #2e7d32 !important; }
+        .btn-sol { 
+            background: #fff9c4 !important; color: #f57f17 !important; 
+            grid-row: span 2; font-size: 20px !important; line-height: 1.2;
+        }
+
+        /* -------------------------------------------
+           ★ 전자칠판 최적화 모달 (화이트보드) 스타일
+           ------------------------------------------- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.75); display: none; 
+            justify-content: center; align-items: center; z-index: 9999;
+        }
+        .modal-content {
+            background: white; width: 95%; height: 95%;
+            border-radius: 20px; padding: 15px; box-sizing: border-box;
+            display: flex; flex-direction: column; position: relative;
+        }
+        .problem-area { flex: 0 0 auto; display: flex; justify-content: center; align-items: center; padding: 20px 0; border-bottom: 2px solid #eee; }
+        .whiteboard-area {
+            flex: 1 1 auto; margin: 15px 0;
+            border: 3px dashed #b0bec5; border-radius: 15px;
+            background-color: #fafafa; display: flex; justify-content: center; align-items: center;
+            color: #cfd8dc; font-size: 1.5rem; position: relative;
+            touch-action: none; /* 필기 시 스크롤 방지 */
+        }
+        .modal-footer { flex: 0 0 auto; display: flex; justify-content: center; gap: 10px; }
+        .btn-check { background-color: #66bb6a; color: white; font-size: 1.2rem; padding: 15px 30px; }
+        .btn-close { background-color: #78909c; color: white; font-size: 1.2rem; padding: 15px 30px; }
+
+        /* 세로셈 숫자 박스 디자인 */
+        .digit-box {
+            display: inline-block; width: 45px; height: 55px; line-height: 55px;
+            border: 2px dashed #999; text-align: center;
+            font-size: 2.5rem; margin: 2px;
+            font-family: 'Courier New', monospace; font-weight: bold;
+            color: #333; border-radius: 8px; vertical-align: middle;
+        }
+        .digit-box.hidden { border-color: transparent; color: transparent; }
+        .division-container { display: flex; flex-direction: column; align-items: flex-start; }
+        .division-row { display: flex; align-items: center; }
+        .division-line { width: 100%; height: 3px; background-color: #333; margin: 5px 0; border-radius: 2px; }
+        .division-symbol { font-size: 3rem; margin: 0 8px; font-family: sans-serif; transform: translateY(4px); }
+        .vertical-calc { text-align: right; }
+        .operator { font-size: 2.5rem; margin-right: 10px; font-weight: bold; vertical-align: middle; }
+        .calc-line { border-top: 3px solid #333; margin: 8px 0; width: 100%; }
+
+    </style>
+</head>
+<body>
+
+<header>🏪 모바일 가게놀이</header>
+
+<main>
+    <section class="card">
+        <h2>📷 1. 상품 스캔 / 추가</h2>
+        <div id="camera"></div>
+        <div id="scan-status" style="font-size:14px; color:#666; margin-bottom:10px; text-align:center;">
+            🚨 카메라가 안 켜지면 https 주소인지 확인하세요!
+        </div>
+        
+        <div class="row">
+            <button id="btn-start-scan" class="primary full-btn">스캐너 켜기</button>
+            <button id="btn-stop-scan" class="secondary full-btn" disabled>끄기</button>
+            <button id="btn-clear-cart" class="danger full-btn">비우기</button>
+        </div>
+        
+        <div class="row" style="margin-top:10px;">
+            <input type="file" id="csv-file" accept=".csv" style="flex:1; width:0;">
+            <button id="btn-load-csv" class="secondary">불러오기</button>
+        </div>
+
+        <hr style="border:0; border-top:1px dashed #ddd; margin:15px 0;">
+        <h3>✍️ 수동 상품 추가</h3>
+        <div class="row">
+            <input type="text" id="manual-name" placeholder="상품명" style="width:70px;">
+            <input type="number" id="manual-price" placeholder="가격" style="width:70px;">
+            <input type="number" id="manual-qty" value="1" style="width:40px;">
+            <button id="btn-add-manual" class="secondary">추가</button>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>🛒 2. 장바구니 & 결제</h2>
+        
+        <div class="total-display-area">
+            <div style="margin-bottom:5px;">
+                <span style="font-size:16px; color:#555;">합계:</span>
+                <span id="total-amount" class="total-value">0</span> <span style="font-size:20px;">원</span>
+            </div>
+            <button id="btn-glasses" class="secondary" style="font-size:12px; padding:6px 10px;">👓 큰 수 읽기 안경</button>
+            <div id="digit-helper" class="digit-helper-container"></div>
+        </div>
+
+        <div class="payment-box">
+            <div class="row">
+                <label style="font-size:16px; font-weight:bold; flex:1;">낸 돈: 
+                    <input type="number" id="input-paid" placeholder="5000" style="width:100%; margin-top:5px;">
+                </label>
+            </div>
+            <button id="btn-calc-change" class="primary" style="width:100%; margin-bottom:10px;">거스름돈 계산</button>
+            <div style="font-size:18px;">
+                거스름돈: <span id="val-change" class="result-text">0</span> 원<br>
+                부족한돈: <span id="val-lack" class="result-text">0</span> 원
+            </div>
+        </div>
+
+        <div style="max-height: 200px; overflow-y:auto; border:1px solid #eee; margin-bottom:10px;">
+            <table>
+                <thead style="position:sticky; top:0;">
+                    <tr><th>상품</th><th>단가</th><th>수량</th><th>금액</th></tr>
+                </thead>
+                <tbody id="cart-tbody"></tbody>
+            </table>
+        </div>
+
+        <button id="btn-mission" class="mission">🎲 돌발 이벤트 뽑기!</button>
+        <div id="mission-area" class="mission-box">
+            <div id="mission-text" style="font-size:20px; font-weight:bold; color:#d84315; margin-bottom:10px; word-break: keep-all;"></div>
+            <button id="btn-close-mission" class="secondary" style="font-size:14px;">확인</button>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>🧮 3. 계산기 연습</h2>
+        <input type="text" id="calc-display" class="calc-display" value="0" readonly>
+        
+        <div class="calc-grid">
+            <button data-action="clear" class="btn-c">C</button>
+            <button data-action="back">←</button>
+            <button data-val="÷" class="btn-op">÷</button>
+            <button data-val="×" class="btn-op">×</button>
+            
+            <button data-val="7">7</button>
+            <button data-val="8">8</button>
+            <button data-val="9">9</button>
+            <button data-val="-" class="btn-op">-</button>
+            
+            <button data-val="4">4</button>
+            <button data-val="5">5</button>
+            <button data-val="6">6</button>
+            <button data-val="+" class="btn-op">+</button>
+            
+            <button data-val="1">1</button>
+            <button data-val="2">2</button>
+            <button data-val="3">3</button>
+            <button id="btn-vertical-solve" class="btn-sol">풀이<br>(세로)</button>
+            
+            <button data-val="0">0</button>
+            <button data-val="00">00</button>
+            <button data-action="equals" class="btn-eq">=</button>
+        </div>
+    </section>
+</main>
+
+<div id="mathModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="problem-area" id="problemContainer"></div>
+        <div class="whiteboard-area">
+            <span style="opacity:0.3; pointer-events:none; font-size: 1rem;">(손가락으로 풀이를 써보세요)</span>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-check" onclick="showMathAnswer()">정답 확인</button>
+            <button class="btn-close" onclick="closeMathModal()">닫기</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    /* ----------------------------------------------------
+       ★ 모바일 환경 설정 (Mobile Config)
+       ---------------------------------------------------- */
+    // HTTPS 체크 로직: 모바일 카메라는 보안연결(https) 필수
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        alert("⚠️ 중요 알림 ⚠️\n\n모바일에서 카메라를 사용하려면\n반드시 'HTTPS' 보안 주소여야 합니다.\n\nGitHub Pages 등에 업로드해서 실행해주세요!");
+    }
+
+    // 오디오 컨텍스트 (터치 시 활성화)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.type = 'sine'; osc.frequency.value = 1500;
+        gain.gain.value = 0.1; osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+    }
+
+    // 데이터
+    let products = [{ codeRaw: "1001", name: "새우깡", price: 1500 }, { codeRaw: "1002", name: "우유", price: 1200 }];
+    const CARD_CODE = "9999";
+    const missions = [
+        "1. 반값 할인(50%): 선택 상품 1개 가격 ÷ 2", "2. 1+1 행사: 같은 상품 2개 사면 1개는 공짜!",
+        "3. 2+1 행사: 같은 상품 3개 사면 1개는 공짜!", "4. 마감 세일 30%: 총액 × 0.7",
+        "5. 회원가입 10%: 총액 × 0.9", "6. 통신사 할인 20%: 총액 × 0.8",
+        "7. 천원의 행복: 총액에서 무조건 -1,000원", "8. 사장님 마음대로: 총액에서 -500원 에누리",
+        "9. 봉투값 추가: 총액 + 100원", "10. 텀블러 할인: 음료 샀으면 -300원",
+        "11. 장바구니 이용: 봉투 안 썼으면 -100원", "12. 못난이 과일: 과일 샀으면 50% 할인",
+        "13. 카드 수수료: 총액 + 100원 추가", "14. 현금 영수증: 포인트 100점 적립 (가상)",
+        "15. 배달 주문: 배달비 +2,000원 추가", "16. 단체 주문: 5개 이상 샀으면 총액 10% 할인",
+        "17. 딱 맞춰 주세요: 거스름돈 0원 되게 물건 추가", "18. 만원의 행복: 10,000원 넘으면 -1,000원",
+        "19. 계산 오류 정정: 총액에서 -200원", "20. 품절 대란: 가장 비싼 물건 1개 구매 취소",
+        "21. 신상품 추천: 점원이 추천하는 물건 1개 추가", "22. 유통기한 임박: 유통기한 짧은 물건 무료 증정",
+        "23. 지역화폐 결제: 현금과 똑같이 계산", "24. 모바일 쿠폰: 기프티콘 사용 (총액 -3,000원)",
+        "25. 포인트 사용: 적립금 사용 (총액 -500원)", "26. 타임 세일: 1분간 전 품목 -100원",
+        "27. 짝수 할인: 총액 끝자리가 짝수면 -200원", "28. 홀수 할인: 총액 끝자리가 홀수면 -200원",
+        "29. 반올림 계산: 10원 단위 반올림해서 받기", "30. 절삭 계산: 10원 단위는 받지 않음 (버림)",
+        "31. [주사위] 꽝! 정가 그대로", "32. [주사위] 사탕 1개 덤", "33. [주사위] 배곱! 물건 1개 2배값 기부",
+        "34. [주사위] 반띵! 총액의 절반만 내기", "35. [주사위] 몰빵! 다음 손님 것까지 내가 내기",
+        "36. [주사위] 공짜! 사장님이 쏜다", "37. [게임] 스피드 퀴즈: 구구단 3초 성공시 -500원",
+        "38. [게임] 절대음감: '바나나' 성공시 -200원", "39. [게임] 참참참: 이기면 물건 1개 무료",
+        "40. [게임] 가위바위보: 이기면 -500원", "41. [게임] 텔레파시: 숫자 같으면 반값",
+        "42. [게임] 칭찬해: 점원 칭찬하면 -300원", "43. 행운의 색깔: 노란색 옷 10% 할인",
+        "44. 이름 초성: 'ㅅ' 있으면 -300원", "45. 생일 축하: 이번 달 생일자 -500원",
+        "46. 안경 선배: 안경 썼으면 포인트 2배", "47. 키 재기: 점원보다 크면/작으면 -100원",
+        "48. 묵찌빠: 점원을 이겨라 (-400원)", "49. 거꾸로 말하기: 성공 시 구매 가능",
+        "50. 동전 던지기: 앞면 -200원", "51. 주사위 홀짝: 맞히면 -300원",
+        "52. 3의 배수: 총액이 3의 배수면 -300원", "53. 5의 배수: 총액이 5의 배수면 -500원",
+        "54. 숨은 그림: 매장 내 별표 찾으면 -100원", "55. 패션왕: 베스트 드레서 -1,000원",
+        "56. 암산왕: 계산기 금지!", "57. 영수증 쓰기: 품목과 가격 말하기",
+        "58. 더치페이: 총액 ÷ 2명", "59. 3인 분할: 총액 ÷ 3명",
+        "60. 예산 맞추기: 5,000원에 가깝게", "61. 잔돈 최소화: 동전 적게 받기",
+        "62. 잔돈 최대화: 지폐만 내기", "63. 묶음 계산: (A×3) + (B×2) 식 세우기",
+        "64. 차이 구하기: 친구와 금액 차이", "65. 합계 비교: A팀 vs B팀",
+        "66. 세트 할인: 과자+음료 -500원", "67. 나눗셈 역산: 3명이 1,000원씩 냄",
+        "68. 곱셈 미션: 껌 10개 가격은?", "69. 가계부: 품목 수와 총액 기록",
+        "70. 최대 구매: 10,000원 꽉 채우기", "71. 최소 구매: 10,000원만 넘기기",
+        "72. 100원 단위: 끝자리 00 맞추기", "73. 단위 변환: 1L 가격 보고 200ml 맞히기",
+        "74. 환율 체험: 달러로 계산해보기", "75. 세금 별도: 금액 × 1.1",
+        "76. 비밀번호: 칠판 문제 풀어야 계산", "77. 인간 저울: 무게 맞히기",
+        "78. 길이 측정: 길이 맞히기", "79. 시간 제한: 30초 안에 계산",
+        "80. 영수증 검산: 실수 찾아내기", "81. [진상] 깎아줘요 대응하기",
+        "82. [진상] 덤 주세요 대응하기", "83. [진상] 돈 부족 대응하기",
+        "84. [진상] 환불 요구 대응하기", "85. [진상] 새치기 대응하기",
+        "86. [진상] 빨리빨리 대응하기", "87. [진상] 반말 금지 대응하기",
+        "88. [손님] 찢어진 돈 대응하기", "89. [손님] 결정 장애 대응하기",
+        "90. [미션] 친절왕 선정", "91. [안전] 지진 발생 대피",
+        "92. [안전] 화재 경보 대피", "93. [안전] 응급 환자 신고",
+        "94. [안전] 분실물 찾아주기", "95. [안전] 미끄럼 주의 안내",
+        "96. [운영] 점원 교대", "97. [운영] 재고 조사",
+        "98. [운영] 시재 점검", "99. [운영] 매장 마감",
+        "100. [이벤트] 오늘의 VIP 선정"
+    ];
+
+    /* ----------------------------------------------------
+       ★ 로직 시작
+       ---------------------------------------------------- */
+    function normalizeBarcode(code){ return String(code||"").trim().replace(/[^0-9A-Za-z]/g, "").toUpperCase(); }
+    function buildProductIndex() {
+        products.forEach(p => {
+            p.codeNorm = normalizeBarcode(p.codeRaw);
+            p.digits = p.codeNorm.replace(/[^0-9]/g, "");
+            p.digitsNoZero = p.digits.replace(/^0+/, "");
+        });
+    }
+    buildProductIndex();
+
+    function findProductByScanCode(scanCode){
+        const norm = normalizeBarcode(scanCode);
+        const digits = norm.replace(/[^0-9]/g, "");
+        const digitsNoZero = digits.replace(/^0+/, "");
+        if(!norm && !digits) return null;
+        let p = products.find(p => p.codeNorm === norm);
+        if(p) return p;
+        if(digits){
+            p = products.find(p => (p.digits && p.digits === digits) || (p.digitsNoZero && p.digitsNoZero === digitsNoZero));
+            if(p) return p;
+        }
+        return null;
+    }
+
+    // CSV
+    const csvInput = document.getElementById("csv-file");
+    document.getElementById("btn-load-csv").addEventListener("click", () => {
+        const file = csvInput.files && csvInput.files[0];
+        if(!file) { alert("CSV 파일을 선택해주세요."); return; }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const lines = e.target.result.split(/\r?\n/).filter(l => l.trim().length > 0);
+            if(lines.length < 2) { alert("데이터가 없습니다."); return; }
+            const newProducts = [];
+            for(let i=1; i<lines.length; i++){
+                const cols = lines[i].split(",").map(c => c.trim());
+                if(cols.length >= 3){
+                    newProducts.push({ codeRaw: cols[0], name: cols[1], price: Number(cols[2]) });
+                }
+            }
+            products = newProducts; buildProductIndex();
+            alert(`✅ ${newProducts.length}개 상품 로드 완료!`);
+        };
+        reader.readAsText(file, "utf-8");
+    });
+
+    // 장바구니
+    let cart = [];
+    let currentTotal = 0;
+    
+    function renderCart() {
+        const tbody = document.getElementById("cart-tbody"); tbody.innerHTML = "";
+        let sum = 0;
+        cart.forEach((item, index) => {
+            sum += item.price * item.qty;
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${item.name}</td>
+                <td class="td-right">${item.price.toLocaleString()}</td>
+                <td class="td-center">
+                    <button onclick="changeQty(${index}, -1)" style="padding:4px 8px;">-</button>
+                    ${item.qty}
+                    <button onclick="changeQty(${index}, 1)" style="padding:4px 8px;">+</button>
+                </td>
+                <td class="td-right">${(item.price*item.qty).toLocaleString()}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        currentTotal = sum;
+        document.getElementById("total-amount").textContent = currentTotal.toLocaleString();
+        updateDigitHelper(currentTotal);
+        document.getElementById("val-change").textContent = "0";
+        document.getElementById("val-lack").textContent = "0";
+    }
+
+    window.changeQty = function(index, delta) {
+        if(!cart[index]) return;
+        cart[index].qty += delta;
+        if(cart[index].qty <= 0) cart.splice(index, 1);
+        renderCart();
+    }
+
+    function addToCart(name, price, qty=1) {
+        const existing = cart.find(i => i.name === name && i.price === price);
+        if(existing) existing.qty += qty; else cart.push({ name, price, qty });
+        renderCart();
+    }
+
+    document.getElementById("btn-clear-cart").addEventListener("click", () => {
+        cart = []; renderCart(); document.getElementById("input-paid").value = "";
+    });
+
+    document.getElementById("btn-add-manual").addEventListener("click", () => {
+        const name = document.getElementById("manual-name").value;
+        const price = Number(document.getElementById("manual-price").value);
+        const qty = Number(document.getElementById("manual-qty").value);
+        if(!name || price < 0 || qty < 1) { alert("상품 정보를 확인하세요."); return; }
+        addToCart(name, price, qty);
+        document.getElementById("manual-name").value = "";
+        document.getElementById("manual-price").value = "";
+        document.getElementById("manual-qty").value = "1";
+    });
+
+    // 큰 수 읽기
+    let showUnits = false;
+    document.getElementById("btn-glasses").addEventListener("click", () => {
+        showUnits = !showUnits;
+        const box = document.getElementById("digit-helper");
+        showUnits ? box.classList.add("show") : box.classList.remove("show");
+    });
+    function updateDigitHelper(num) {
+        const container = document.getElementById("digit-helper"); container.innerHTML = "";
+        const str = String(num); const units = ["일","십","백","천","만","십만","백만","천만","억"];
+        for(let i=0; i<str.length; i++) {
+            const digit = str[i]; const unitIdx = str.length - 1 - i;
+            let colorCls = "u-1";
+            if(unitIdx===1) colorCls="u-10"; if(unitIdx===2) colorCls="u-100";
+            if(unitIdx===3) colorCls="u-1000"; if(unitIdx>=4) colorCls="u-10000";
+            const div = document.createElement("div"); div.className = "digit-box-unit";
+            div.innerHTML = `<span class="digit-num">${digit}</span><span class="digit-unit ${colorCls}">${units[unitIdx]||""}</span>`;
+            container.appendChild(div);
+        }
+    }
+
+    // 거스름돈
+    document.getElementById("btn-calc-change").addEventListener("click", () => {
+        const paid = Number(document.getElementById("input-paid").value);
+        if(paid >= currentTotal) {
+            document.getElementById("val-change").textContent = (paid - currentTotal).toLocaleString();
+            document.getElementById("val-lack").textContent = "0";
+        } else {
+            document.getElementById("val-change").textContent = "0";
+            document.getElementById("val-lack").textContent = (currentTotal - paid).toLocaleString();
+        }
+    });
+
+    // 미션
+    document.getElementById("btn-mission").addEventListener("click", () => {
+        const idx = Math.floor(Math.random() * missions.length);
+        document.getElementById("mission-text").textContent = missions[idx];
+        document.getElementById("mission-area").style.display = "block";
+    });
+    document.getElementById("btn-close-mission").addEventListener("click", () => {
+        document.getElementById("mission-area").style.display = "none";
+    });
+
+    // ★ 모바일 스캐너 설정 (Mobile Camera Config) ★
+    let isScanning = false; let lastScanCode = ""; let lastScanTime = 0;
+    function startScanner() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        
+        const constraints = {
+            width: 480, height: 320, // 해상도 낮춰서 성능 확보
+            facingMode: "environment" // 후면 카메라 강제
+        };
+
+        Quagga.init({
+            inputStream: {
+                name: "Live",
+                type: "LiveStream",
+                target: document.querySelector("#camera"),
+                constraints: constraints,
+                area: { top: "0%", right: "0%", left: "0%", bottom: "0%" }
+            },
+            decoder: { readers: ["ean_reader", "code_128_reader"] },
+            locate: true
+        }, function(err) {
+            if (err) {
+                console.error(err);
+                alert("카메라 권한 오류!\n\n1. 브라우저 설정에서 카메라 권한 허용\n2. 'https' 주소인지 확인\n(파일 직접 열기/카카오톡 브라우저에서는 안 됩니다)");
+                return;
+            }
+            Quagga.start(); isScanning = true;
+            document.getElementById("scan-status").textContent = "바코드를 카메라 가운데에 맞춰주세요";
+            document.getElementById("btn-start-scan").disabled = true; document.getElementById("btn-stop-scan").disabled = false;
+        });
+        
+        Quagga.offDetected(onBarcodeDetected); // 중복 리스너 방지
+        Quagga.onDetected(onBarcodeDetected);
+    }
+
+    function stopScanner() {
+        Quagga.stop(); isScanning = false;
+        document.getElementById("scan-status").textContent = "스캐너 꺼짐";
+        document.getElementById("btn-start-scan").disabled = false; document.getElementById("btn-stop-scan").disabled = true;
+    }
+
+    function onBarcodeDetected(result) {
+        const code = result.codeResult.code; const now = Date.now();
+        if(code === lastScanCode && now - lastScanTime < 1500) return; // 1.5초 중복 방지
+        lastScanCode = code; lastScanTime = now;
+        
+        const digits = code.replace(/[^0-9]/g, "");
+        if (digits.endsWith(CARD_CODE)) {
+            if(currentTotal > 0) {
+                playBeep();
+                document.getElementById("scan-status").textContent = "💳 결제 완료! 다음 손님~";
+                cart = []; renderCart(); document.getElementById("input-paid").value = "";
+            }
+            return;
+        }
+
+        const product = findProductByScanCode(code);
+        if(product) {
+            playBeep(); addToCart(product.name, product.price, 1);
+            document.getElementById("scan-status").textContent = `✅ ${product.name} 스캔됨`;
+        }
+    }
+    
+    document.getElementById("btn-start-scan").addEventListener("click", startScanner);
+    document.getElementById("btn-stop-scan").addEventListener("click", stopScanner);
+
+    // 계산기 & 모달
+    let calcExpr = ""; const calcDisp = document.getElementById("calc-display"); let modalAnswer = 0;
+    document.querySelectorAll(".calc-grid button").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            const target = e.target.closest('button'); if(!target) return;
+            if (target.id === "btn-vertical-solve") { openMathModalFromCalc(calcExpr); return; }
+            const val = target.dataset.val; const action = target.dataset.action;
+            if(action === "clear") { calcExpr = ""; calcDisp.value = "0"; }
+            else if(action === "back") { calcExpr = calcExpr.slice(0, -1); calcDisp.value = calcExpr || "0"; }
+            else if(action === "equals") {
+                try {
+                    const safe = calcExpr.replace(/×/g, "*").replace(/÷/g, "/");
+                    const res = Math.floor(eval(safe)); calcDisp.value = res; calcExpr = String(res);
+                } catch { calcDisp.value = "오류"; }
+            }
+            else if(val) { calcExpr += val; calcDisp.value = calcExpr; }
+        });
+    });
+
+    function createBoxedNumber(num) {
+        const str = String(num); let html = '';
+        for (let char of str) html += `<span class="digit-box">${char}</span>`;
+        return html;
+    }
+    function createEmptyBoxes(length) {
+        let html = ''; for (let i = 0; i < length; i++) html += `<span class="digit-box" style="color:transparent; border-color: #aaa;">0</span>`;
+        return html;
+    }
+    function createInvisibleBoxes(count) {
+        let html = ''; for (let i = 0; i < count; i++) html += `<span class="digit-box hidden">0</span>`;
+        return html;
+    }
+
+    function openMathModalFromCalc(expr) {
+        const match = expr.match(/^(\d+)([+\-×÷])(\d+)$/);
+        if(!match) { alert("숫자 연산자 숫자 (예: 100÷5) 형태만 가능해요!"); return; }
+        const num1 = parseInt(match[1]); const op = match[2]; const num2 = parseInt(match[3]);
+        const container = document.getElementById('problemContainer'); const modal = document.getElementById('mathModal');
+        container.innerHTML = '';
+        
+        if(op === '+') modalAnswer = num1 + num2;
+        else if(op === '-') modalAnswer = num1 - num2;
+        else if(op === '×') modalAnswer = num1 * num2;
+        else if(op === '÷') modalAnswer = Math.floor(num1 / num2);
+
+        if (op === '÷') {
+            const qStr = String(modalAnswer); const n1Str = String(num1); const n2Str = String(num2);
+            let html = `
+                <div class="division-container">
+                    <div class="division-row" style="margin-bottom: 0;">
+                        <div style="width: 40px;"></div>
+                        ${createInvisibleBoxes(n2Str.length)} ${createEmptyBoxes(qStr.length)}
+                    </div>
+                    <div class="division-row">
+                         <div style="width: 40px;"></div>
+                         ${createInvisibleBoxes(n2Str.length)}
+                        <div class="division-line" style="width: ${qStr.length * 50}px;"></div>
+                    </div>
+                    <div class="division-row">
+                        ${createBoxedNumber(num2)}
+                        <span class="division-symbol">)</span>
+                        ${createBoxedNumber(num1)}
+                    </div>
+                </div>`;
+            container.innerHTML = html;
+        } else {
+            const ansStr = String(modalAnswer);
+            let html = `
+                <div class="vertical-calc">
+                    <div class="division-row" style="justify-content: flex-end;">${createBoxedNumber(num1)}</div>
+                    <div class="division-row" style="justify-content: flex-end;">
+                        <span class="operator">${op}</span>${createBoxedNumber(num2)}
+                    </div>
+                    <div class="calc-line"></div>
+                    <div class="division-row" style="justify-content: flex-end;">${createEmptyBoxes(ansStr.length)}</div>
+                </div>`;
+            container.innerHTML = html;
+        }
+        modal.style.display = 'flex';
+    }
+
+    function showMathAnswer() { alert("정답은 [ " + modalAnswer + " ] 입니다!"); }
+    function closeMathModal() { document.getElementById('mathModal').style.display = 'none'; }
+</script>
+</body>
+</html>
